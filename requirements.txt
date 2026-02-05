@@ -1,3 +1,4 @@
 streamlit
 pypdf2
 pillow
+requests
