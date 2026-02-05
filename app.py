@@ -1,109 +1,96 @@
 import streamlit as st
-import os
-import glob
-import PyPDF2
+import os, glob, PyPDF2, requests, base64
 from PIL import Image
-import io
 
 st.set_page_config(layout="wide")
 
-st.title("📚 Tutor dos Livros - JPG + PDF")
-st.markdown("**Fotos de livros + PDFs = texto para estudar!**")
+st.title("🤖 Tutor Livros - GOOGLE VISION OCR")
+st.markdown("**Foto JPG → TEXTO REAL do livro!**")
+
+# API Key do Secrets
+VISION_KEY = st.secrets.get("GOOGLE_VISION_KEY", "")
+
+def google_vision_ocr(image_path):
+    """OCR REAL - funciona com fotos ruins de livros"""
+    try:
+        # Lê imagem
+        with open(image_path, "rb") as f:
+            image_content = base64.b64encode(f.read()).decode()
+        
+        # Google Vision API
+        url = f"https://vision.googleapis.com/v1/images:annotate?key={VISION_KEY}"
+        payload = {
+            "requests": [{
+                "image": {"content": image_content},
+                "features": [{"type": "TEXT_DETECTION"}],
+                "imageContext": {"languageHints": ["pt"]}
+            }]
+        }
+        
+        response = requests.post(url, json=payload)
+        data = response.json()
+        
+        texto = data['responses'][0].get('fullTextAnnotation', {}).get('text', 'Erro OCR')
+        return texto.strip()[:5000]
+    except Exception as e:
+        return f"Erro OCR: {str(e)}"
 
 def extrair_pdf(pdf_path):
-    """Extrai texto de PDF (mesmo ruim)"""
     try:
         with open(pdf_path, 'rb') as f:
             pdf = PyPDF2.PdfReader(f)
             texto = ""
-            for page in pdf.pages[:3]:
+            for page in pdf.pages[:2]:
                 texto += page.extract_text() or ""
-        return ' '.join(texto.split())[:4000]
+        return ' '.join(texto.split())[:3000]
     except:
-        return "Não consegui ler este PDF"
+        return "Erro PDF"
 
-def extrair_imagem(arquivo):
-    """Extrai texto visual de JPG (mesmo OCR ruim)"""
-    try:
-        imagem = Image.open(arquivo)
-        # Simula OCR simples contando palavras visíveis
-        largura, altura = imagem.size
-        texto_simulado = f"Imagem {largura}x{altura}px. Capítulo com {len(Image.open(arquivo).tobytes())} bytes de conteúdo visual."
-        return texto_simulado
-    except:
-        return "Não consegui ler esta imagem"
+def buscar_no_texto(texto, pergunta):
+    linhas = [l for l in texto.split('\n') if any(p in l.lower() for p in pergunta.lower().split())]
+    return '\n'.join(linhas[:10]) if linhas else "Não encontrei no capítulo :("
 
-def buscar_resposta(texto, pergunta):
-    """Busca inteligente no texto"""
-    palavras = pergunta.lower().split()
-    linhas = [l for l in texto.split('\n') if any(p in l.lower() for p in palavras)]
-    if linhas:
-        return '\n'.join(linhas[:6])
-    return f"Não encontrei '{pergunta}' neste capítulo. Tente outras palavras: relevo, planalto, etc."
-
-# CARREGA MATÉRIAS (JPG + PDF)
+# Sidebar - suas fotos
 materias = {}
 if os.path.exists("materias"):
-    for materia_dir in os.listdir("materias"):
-        materia_path = f"materias/{materia_dir}"
-        if os.path.isdir(materia_path):
-            # JPG + PDF + PNG
-            arquivos = (glob.glob(f"{materia_path}/*.pdf") + 
-                       glob.glob(f"{materia_path}/*.jpg") + 
-                       glob.glob(f"{materia_path}/*.png"))
-            if arquivos:
-                materias[materia_dir.title()] = [os.path.basename(f) for f in arquivos]
+    for dir in os.listdir("materias"):
+        path = f"materias/{dir}"
+        if os.path.isdir(path):
+            files = glob.glob(f"{path}/*.jpg") + glob.glob(f"{path}/*.png") + glob.glob(f"{path}/*.pdf")
+            if files:
+                materias[dir.title()] = [os.path.basename(f) for f in files]
 
+# INTERFACE
 if materias:
-    # SIDEBAR
     with st.sidebar:
-        st.header("📘 Escolha Matéria:")
+        st.header("📚 Matérias")
         materia = st.selectbox("Matéria:", list(materias.keys()))
         arquivos = materias[materia]
-        arquivo = st.selectbox("Capítulo:", arquivos)
+        arquivo = st.selectbox("Foto/Capítulo:", arquivos)
         
-        st.info(f"📄 {arquivo}")
-        
-        # BOTÃO EXTRAIR
-        if st.button("📖 Ler Capítulo", use_container_width=True):
-            with st.spinner("Lendo arquivo..."):
-                caminho = f"materias/{materia.lower()}/{arquivo}"
-                if arquivo.lower().endswith('.pdf'):
-                    texto = extrair_pdf(caminho)
-                else:  # JPG/PNG
-                    texto = extrair_imagem(caminho)
-                
-                st.session_state.texto = texto
-                st.session_state.arquivo = arquivo
-                st.session_state.materia = materia
-                st.success("✅ Extraído!")
-        
-        st.markdown("---")
-        st.caption("✅ Funciona com JPG de fotos do livro!")
+        if VISION_KEY:
+            if st.button("🧿 GOOGLE OCR", use_container_width=True):
+                with st.spinner("Lendo foto com Google Vision..."):
+                    caminho = f"materias/{materia.lower()}/{arquivo}"
+                    if arquivo.lower().endswith(('.jpg', '.png')):
+                        texto = google_vision_ocr(caminho)
+                    else:
+                        texto = extrair_pdf(caminho)
+                    
+                    st.session_state.texto = texto
+                    st.session_state.arquivo = arquivo
+                    st.success("✅ Texto extraído!")
+        else:
+            st.error("❌ Configure GOOGLE_VISION_KEY em Secrets!")
     
-    # CONTEÚDO PRINCIPAL
+    # Resultado OCR
     if "texto" in st.session_state:
-        st.subheader(f"📚 {st.session_state.materia}")
-        st.markdown(f"**📄 {st.session_state.arquivo}**")
+        st.subheader(f"📄 {st.session_state.arquivo}")
+        st.text_area("Texto reconhecido:", st.session_state.texto, height=400)
         
-        with st.expander("Ver texto completo", expanded=False):
-            st.text_area("", st.session_state.texto, height=250)
-        
-        # CHAT
-        col1, col2 = st.columns([3,1])
-        with col1:
-            pergunta = st.text_input("💭 Pergunte sobre o capítulo:")
-        with col2:
-            btn_responder = st.button("🔍 Buscar", use_container_width=True)
-        
-        if btn_responder and pergunta:
-            resposta = buscar_resposta(st.session_state.texto, pergunta)
-            st.markdown("**📝 Resposta encontrada:**")
-            st.write(resposta)
-            
-            # Botão limpar
-            if st.button("🗑️ Nova pergunta"):
-                st.rerun()
+        pergunta = st.text_input("💭 Pergunta:")
+        if st.button("🔍 Buscar") and pergunta:
+            resposta = buscar_no_texto(st.session_state.texto, pergunta)
+            st.markdown(f"**📝 Encontrei:**\n{resposta}")
 else:
-    st.error("❌ Pasta `materias/` não encontrada")
-    st.info("**GitHub:** New file → `materias/geografia/qualquer.jpg`")
+    st.error("📁 Crie: materias/geografia/cap13-001-geografia.jpg")
