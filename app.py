@@ -4,8 +4,8 @@ from PIL import Image
 
 st.set_page_config(layout="wide")
 
-st.title("🤖 Tutor Livros - GOOGLE VISION + DIAGNÓSTICO")
-st.markdown("**Detecta erros da API e continua funcionando!**")
+st.title("🤖 Tutor Livros - GOOGLE VISION + DIAGNÓSTICO")
+st.markdown("**Seu assistente de estudos!**")
 
 VISION_KEY = st.secrets.get("GOOGLE_VISION_KEY", "")
 
@@ -70,6 +70,11 @@ def extrair_pdf(pdf_path):
     except:
         return "Erro PDF"
 
+def buscar_no_texto(texto, pergunta):
+    """Busca inteligente no texto"""
+    linhas = [l for l in texto.split('\n') if any(p in l.lower() for p in pergunta.lower().split())]
+    return '\n'.join(linhas[:10]) if linhas else "Não encontrei no capítulo :("
+
 # Sidebar
 materias = {}
 if os.path.exists("materias"):
@@ -102,9 +107,10 @@ if materias:
                 
                 st.session_state.texto = texto
                 st.session_state.arquivo = arquivo
+                st.session_state.materia = materia
                 st.rerun()
     
-    # Resultado
+    # ===== RESULTADO COM MOSTRAR/OCULTAR =====
     if "texto" in st.session_state:
         st.subheader(f"📄 {st.session_state.arquivo}")
         
@@ -116,12 +122,26 @@ if materias:
             st.warning(texto)
         else:
             st.success("✅ OCR funcionou!")
-            st.text_area("Texto reconhecido:", texto, height=400)
             
-            pergunta = st.text_input("💭 Pergunta:")
-            if st.button("🔍 Buscar") and pergunta:
-                linhas = [l for l in texto.split('\n') if any(p in l.lower() for p in pergunta.lower().split())]
-                resposta = '\n'.join(linhas[:10]) if linhas else "Não encontrei."
-                st.markdown(f"**📝 Resposta:**\n{resposta}")
+            # 🔽 NOVO: Checkbox mostrar/ocultar
+            mostrar_texto = st.checkbox("👁️ Mostrar texto reconhecido", value=False)
+            if mostrar_texto:
+                st.text_area("Texto completo:", texto, height=400, key="texto_area")
+            
+            # 🔍 Busca (sempre visível)
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                pergunta = st.text_input("💭 Pergunta sobre o capítulo:")
+            with col2:
+                buscar = st.button("🔍 Buscar", use_container_width=True)
+            
+            if buscar and pergunta:
+                resposta = buscar_no_texto(st.session_state.texto, pergunta)
+                st.markdown("**📝 Resposta encontrada:**")
+                st.write(resposta)
+                
+                # Limpar conversa
+                if st.button("🗑️ Nova pergunta"):
+                    st.rerun()
 else:
     st.error("📁 materias/geografia/cap13-001-geografia.jpg")
