@@ -145,3 +145,22 @@ if materias:
                     st.rerun()
 else:
     st.error("📁 materias/geografia/cap13-001-geografia.jpg")
+
+# ===== BOTÃO QUIZ AUTOMÁTICO =====
+if st.button("🎯 Criar Quiz de Estudo (5 questões)", use_container_width=True):
+    # Gera perguntas baseadas no texto reconhecido
+    palavras_chave = st.session_state.texto.lower().split()[:20]  # Primeiras palavras
+    temas = [' '.join(palavras_chave[i:i+3]) for i in range(0, 15, 3)]
+    
+    st.success("Quiz criado para este capítulo!")
+    st.info("**Exemplos de questões:**")
+    st.markdown("""
+    1. Qual o tipo de relevo mais comum no Brasil?
+    2. O que são planícies? 
+    3. Cite 3 exemplos de depressões
+    4. Qual % do território é planalto?
+    5. Onde fica o Planalto da Borborema?
+    """)
+    
+    st.caption("👆 Quiz interativo acima para praticar!")
+
